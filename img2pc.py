@@ -87,5 +87,6 @@ def process_multiple_folders(root_dir, output_dir="output_pcds"):
 
 
 if __name__ == "__main__":
-    path = "C:\\Users\\dell\\PycharmProjects\\Mask2AM\\HL1\\"
-    binary_images_to_pointcloud_simple(path, output_pcd="output.pcd")
+    path_1 = "C:\\Users\\dell\\PycharmProjects\\Mask2AM\\imgfold\\"
+    path_2 = "C:\\Users\\dell\\PycharmProjects\\Mask2AM\\pcdfold\\"
+    process_multiple_folders(path_1, path_2)
