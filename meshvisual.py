@@ -1,5 +1,7 @@
 import open3d as o3d
 import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 def mesh_patches(patches):
     plane_meshes = []
@@ -251,6 +253,81 @@ def plane_visualizer_1(pcd_original, plane_meshes):
         o3d.visualization.draw_geometries([pcd_original])
 
 
+def get_plane_summary(patches):
+
+    print(f"平面总数: {len(patches)}")
+    print("\n平面统计信息:")
+
+    # 计算法向量方向统计
+    normals = [patch.R[:, 2] for patch in patches]
+    normals = np.array(normals)
+
+    print(f"法向量平均值: [{np.mean(normals[:, 0]):.3f}, {np.mean(normals[:, 1]):.3f}, {np.mean(normals[:, 2]):.3f}]")
+    print(f"法向量标准差: [{np.std(normals[:, 0]):.3f}, {np.std(normals[:, 1]):.3f}, {np.std(normals[:, 2]):.3f}]")
+
+    # 计算尺寸统计
+    extents = [patch.extent for patch in patches]
+    extents = np.array(extents)
+
+    print(f"\n平面尺寸统计:")
+    print(f"平均尺寸: [{np.mean(extents[:, 0]):.2f}, {np.mean(extents[:, 1]):.2f}, {np.mean(extents[:, 2]):.2f}]")
+    print(f"最大尺寸: [{np.max(extents[:, 0]):.2f}, {np.max(extents[:, 1]):.2f}, {np.max(extents[:, 2]):.2f}]")
+    print(f"最小尺寸: [{np.min(extents[:, 0]):.2f}, {np.min(extents[:, 1]):.2f}, {np.min(extents[:, 2]):.2f}]")
+
+
+def visualize_patches_simple(patches, alpha=0.5):
+
+    fig = plt.figure(figsize=(12, 9))
+    ax = fig.add_subplot(111, projection='3d')
+    all_vertices = []
+    colors = [
+            [1.000, 0.678, 0.678],  # #ffadad
+            [1.000, 0.839, 0.647],  # #ffd6a5
+            [0.992, 1.000, 0.714],  # #fdffb6
+            [0.792, 1.000, 0.749],  # #caffbf
+            [0.608, 0.965, 1.000],  # #9bf6ff
+            [0.627, 0.769, 1.000],  # #a0c4ff
+            [0.741, 0.698, 1.000],  # #bdb2ff
+            [1.000, 0.776, 1.000]  # #ffc6ff
+        ]
+    for i, patch in enumerate(patches):
+        center = patch.center
+        R = patch.R
+        extent = patch.extent
+        half_w = extent[0] / 2
+        half_h = extent[1] / 2
+        axis_x = R[:, 0]
+        axis_y = R[:, 1]
+        vertices = np.array([
+            center - half_w * axis_x - half_h * axis_y,
+            center + half_w * axis_x - half_h * axis_y,
+            center + half_w * axis_x + half_h * axis_y,
+            center - half_w * axis_x + half_h * axis_y
+        ])
+        poly = Poly3DCollection([vertices], alpha=alpha, facecolor=colors[i % len(colors)])
+        edgecolor = [c * 0.6 for c in colors[i % len(colors)]]
+        poly.set_edgecolor(edgecolor)
+        poly.set_linewidth(0.5)
+        ax.add_collection3d(poly)
+        all_vertices.append(vertices)
+
+    if all_vertices:
+        all_vertices = np.vstack(all_vertices)
+        min_coords = all_vertices.min(axis=0)
+        max_coords = all_vertices.max(axis=0)
+
+        ax.set_xlim(min_coords[0], max_coords[0])
+        ax.set_ylim(min_coords[1], max_coords[1])
+        ax.set_zlim(min_coords[2], max_coords[2])
+
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title(f'3D Planes ({len(patches)} planes)', fontsize=14)
+    ax.view_init(elev=25, azim=45)
+    plt.tight_layout()
+    plt.show()
+
 if __name__ == "__main__":
     print("->正在加载点云... ")
     pcd = o3d.io.read_point_cloud("C:\\Users\\dell\\PycharmProjects\\Mask2AM\\pcdfold\\S3.pcd")
@@ -262,20 +339,22 @@ if __name__ == "__main__":
 
     # 估计法线
     pcd.estimate_normals(
-        search_param=o3d.geometry.KDTreeSearchParamKNN(knn=50)
+        search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30)
     )
 
     # 检测平面
     patches = pcd.detect_planar_patches(
         normal_variance_threshold_deg=60,  # 默认值
         coplanarity_deg=75,  # 默认值
-        outlier_ratio=0.75,  # 默认值
+        outlier_ratio=0.65,  # 默认值
         min_plane_edge_length=0.0,  # 自动计算
         min_num_points=0,  # 自动计算
-        search_param=o3d.geometry.KDTreeSearchParamKNN(knn=50)  # 使用K近邻
+        search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30)  # 使用K近邻
     )
 
     print(f"检测到 {len(patches)} 个平面片")
-    # mesh_patches_1 = mesh_patches(patches)
-    mesh_patches_1 = mesh_patches_with_grid(patches)
-    plane_visualizer_1(pcd_original, mesh_patches_1)
+    mesh_patches_1 = mesh_patches(patches)
+    # mesh_patches_1 = mesh_patches_with_grid(patches)
+    # plane_visualizer_1(pcd_original, mesh_patches_1)
+    visualize_patches_simple(patches, alpha=0.5)
+    get_plane_summary(patches)

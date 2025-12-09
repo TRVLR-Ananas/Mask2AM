@@ -1,2 +1,0 @@
-import img2pc
-
