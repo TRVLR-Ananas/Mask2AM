@@ -330,7 +330,7 @@ def visualize_patches_simple(patches, alpha=0.5):
 
 if __name__ == "__main__":
     print("->正在加载点云... ")
-    pcd = o3d.io.read_point_cloud("C:\\Users\\dell\\PycharmProjects\\Mask2AM\\pcdfold\\S3.pcd")
+    pcd = o3d.io.read_point_cloud("C:\\Users\\dell\\PycharmProjects\\Mask2AM\\pcd\\FX\\S3.pcd")
     print(pcd)
     print("->正在可视化点云")
 
@@ -344,17 +344,17 @@ if __name__ == "__main__":
 
     # 检测平面
     patches = pcd.detect_planar_patches(
-        normal_variance_threshold_deg=60,  # 默认值
-        coplanarity_deg=75,  # 默认值
-        outlier_ratio=0.65,  # 默认值
-        min_plane_edge_length=0.0,  # 自动计算
-        min_num_points=0,  # 自动计算
-        search_param=o3d.geometry.KDTreeSearchParamKNN(knn=30)  # 使用K近邻
+        normal_variance_threshold_deg=85,  # 法向量方差阈值
+        coplanarity_deg=85,  # 共面性
+        outlier_ratio=0.65,  # 离群点比例
+        min_plane_edge_length=50,  # 最小平面边长；若设为 0，则默认值为点云最大跨度的 1%
+        min_num_points=200,  # 最小点数；若设为 0，则默认值为点云总点数的 0.1%
+        search_param=o3d.geometry.KDTreeSearchParamKNN(30)  # 搜索参数
     )
 
     print(f"检测到 {len(patches)} 个平面片")
-    mesh_patches_1 = mesh_patches(patches)
-    # mesh_patches_1 = mesh_patches_with_grid(patches)
-    # plane_visualizer_1(pcd_original, mesh_patches_1)
-    visualize_patches_simple(patches, alpha=0.5)
+    # mesh_patches_1 = mesh_patches(patches)
+    mesh_patches_1 = mesh_patches_with_grid(patches)
+    plane_visualizer_1(pcd_original, mesh_patches_1)
+    # visualize_patches_simple(patches, alpha=0.5)
     get_plane_summary(patches)

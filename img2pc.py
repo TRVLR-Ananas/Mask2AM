@@ -87,6 +87,6 @@ def process_multiple_folders(root_dir, output_dir="output_pcds"):
 
 
 if __name__ == "__main__":
-    path_1 = "C:\\Users\\dell\\PycharmProjects\\Mask2AM\\imgfold\\"
-    path_2 = "C:\\Users\\dell\\PycharmProjects\\Mask2AM\\pcdfold\\"
+    path_1 = "C:\\Users\\dell\\PycharmProjects\\Mask2AM\\img\\pore_edge\\"
+    path_2 = "C:\\Users\\dell\\PycharmProjects\\Mask2AM\\pcd\\pore_edge\\"
     process_multiple_folders(path_1, path_2)
