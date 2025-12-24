@@ -37,7 +37,7 @@ def binary_images_to_pointcloud_simple(image_folder, output_pcd="output.pcd"):
     # 保存点云
     o3d.io.write_point_cloud(output_pcd, pcd)
 
-    print(f"生成 {len(points)} 个点")
+    # print(f"生成 {len(points)} 个点")
     return pcd
 
 
@@ -76,14 +76,16 @@ def process_multiple_folders(root_dir, output_dir="output_pcds"):
         output_filename = f"{folder}.pcd"
         output_path = os.path.join(output_dir, output_filename)
 
-        print(f"处理文件夹: {folder} ({len(image_files)} 张图片)")
+        # print(f"处理文件夹: {folder} ({len(image_files)} 张图片)")
 
         try:
             # 调用原始函数处理
             pcd = binary_images_to_pointcloud_simple(folder_path, output_path)
-            print(f"✓ 完成: {folder} -> {output_filename}\n")
+            # print(f"✓ 完成: {folder} -> {output_filename}\n")
         except Exception as e:
             print(f"✗ 处理 {folder} 时出错: {e}\n")
+
+    return subfolders
 
 
 if __name__ == "__main__":

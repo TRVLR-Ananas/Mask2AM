@@ -1,195 +1,202 @@
-import open3d as o3d
+import pandas as pd
 import numpy as np
-from scipy.linalg import solve
-import warnings
-
-warnings.filterwarnings('ignore')
+import matplotlib.pyplot as plt
 
 
-class EllipsoidParams:
-    def __init__(self):
-        self.center = np.zeros(3)
-        self.semi_axes = np.zeros(3)
-        self.rotation = np.eye(3)
-        self.volume = 0.0
+def visualize_spheres_as_scatter(csv_file, filename="abstract_model.png", max_points=300, alpha=0.7):
+    """
+    将等效球体可视化为散点图
+    参数:
+        csv_file: CSV文件路径
+        max_points: 最大显示点数量
+        point_size_scale: 点大小缩放因子
+        alpha: 透明度 (0-1)
+    """
+    # 读取CSV文件
+    df = pd.read_csv(csv_file)
 
+    # 限制显示数量
+    if len(df) > max_points:
+        df = df.sort_values('equivalent_radius', ascending=False).head(max_points)
 
-def fit_ellipsoid(points):
-    """适配大尺度点云的椭球拟合（增加点数阈值判断）"""
-    params = EllipsoidParams()
-    n = points.shape[0]
+    # 创建图形
+    fig = plt.figure(figsize=(12, 9))
+    ax = fig.add_subplot(111, projection='3d')
 
-    # 拟合椭球至少需要9个点，大孔隙可抽样拟合（加速）
-    if n < 9:
-        print(f"错误：点云数量不足（{n}<9），无法拟合椭球！")
-        return None
-    # 对超多点的孔隙抽样拟合（避免计算量过大）
-    sample_n = min(n, 10000)  # 最多抽样1万个点
-    if n > sample_n:
-        idx = np.random.choice(n, sample_n, replace=False)
-        points_sample = points[idx]
-    else:
-        points_sample = points
+    # 颜色板
+    colors = [
+        [1.000, 0.678, 0.678],  # #ffadad
+        [1.000, 0.839, 0.647],  # #ffd6a5
+        [0.992, 1.000, 0.714],  # #fdffb6
+        [0.792, 1.000, 0.749],  # #caffbf
+        [0.608, 0.965, 1.000],  # #9bf6ff
+        [0.627, 0.769, 1.000],  # #a0c4ff
+        [0.741, 0.698, 1.000],  # #bdb2ff
+        [1.000, 0.776, 1.000]  # #ffc6ff
+    ]
 
-    x = points_sample[:, 0]
-    y = points_sample[:, 1]
-    z = points_sample[:, 2]
+    # 准备数据
+    x = df['centroid_x'].values
+    y = df['centroid_y'].values
+    z = df['centroid_z'].values
 
-    A = np.zeros((sample_n, 9))
-    A[:, 0] = x * x
-    A[:, 1] = y * y
-    A[:, 2] = z * z
-    A[:, 3] = x * y
-    A[:, 4] = x * z
-    A[:, 5] = y * z
-    A[:, 6] = x
-    A[:, 7] = y
-    A[:, 8] = z
+    # 计算点大小
+    radius = df['equivalent_radius'].values
 
-    b = -np.ones(sample_n)
+    # 点的大小（散点图的s参数是点面积，所以使用直径的平方）
+    # 添加缩放因子控制点的大小
+    point_sizes = (radius ** 2) * np.pi * 0.1244
 
-    try:
-        coeffs = np.linalg.lstsq(A, b, rcond=None)[0]
-    except:
-        print("错误：最小二乘求解系数失败！")
-        return None
-
-    Q = np.array([
-        [coeffs[0], coeffs[3] / 2, coeffs[4] / 2],
-        [coeffs[3] / 2, coeffs[1], coeffs[5] / 2],
-        [coeffs[4] / 2, coeffs[5] / 2, coeffs[2]]
-    ])
-    L = np.array([coeffs[6] / 2, coeffs[7] / 2, coeffs[8] / 2])
-
-    try:
-        params.center = solve(Q, -L, assume_a='pos')
-    except:
-        print("错误：求解椭球中心失败（矩阵奇异）！")
-        return None
-
-    c = params.center
-    cTcQc = c.T @ Q @ c
-    K = cTcQc + L.T @ c + 1.0
-    Q_norm = -Q / K
-
-    try:
-        eig_vals, eig_vecs = np.linalg.eig(Q_norm)
-    except:
-        print("错误：特征值分解失败！")
-        return None
-
-    if np.any(eig_vals <= 1e-6):
-        print(f"错误：拟合结果非椭球（特征值={eig_vals}）！")
-        return None
-
-    semi_axes = 1 / np.sqrt(eig_vals)
-    sorted_idx = np.argsort(semi_axes)[::-1]
-    params.semi_axes = semi_axes[sorted_idx]
-    params.rotation = eig_vecs[:, sorted_idx]
-    params.volume = (4 / 3) * np.pi * np.prod(params.semi_axes)
-
-    # 可选：计算拟合误差（抽样计算）
-    points_local = (points_sample - params.center) @ params.rotation
-    points_unit = points_local / params.semi_axes
-    distances = np.abs(np.linalg.norm(points_unit, axis=1) - 1)
-    print(f"平均拟合误差：{np.mean(distances):.6f}")
-
-    return params
-
-
-def main(pcd_path):
-    # 1. 读取并清理点云
-    print(f"读取点云文件：{pcd_path}")
-    pcd = o3d.io.read_point_cloud(pcd_path)
-    if len(pcd.points) == 0:
-        print("错误：读取的点云为空！")
-        return
-
-    # 清理NaN/Inf点
-    points = np.asarray(pcd.points)
-    mask = np.isfinite(points).all(axis=1)
-    pcd = pcd.select_by_index(np.where(mask)[0])
-    points = np.asarray(pcd.points)
-    print(f"清理无效点后点数：{len(points)}")
-
-    # 打印点云尺度（关键！坐标范围0~673 → 单位是毫米）
-    print("\n点云坐标范围：")
-    print(f"X: {np.min(points[:, 0]):.6f} ~ {np.max(points[:, 0]):.6f}")
-    print(f"Y: {np.min(points[:, 1]):.6f} ~ {np.max(points[:, 1]):.6f}")
-    print(f"Z: {np.min(points[:, 2]):.6f} ~ {np.max(points[:, 2]):.6f}")
-
-    # 2. 关键优化：体素下采样（减少点云数量，避免卡死）
-    # voxel_size=1 → 1毫米体素，千万级点云可降到几万/几十万点
-    voxel_size = 1.0  # 可根据需求调整（0.5/2.0）
-    print(f"\n执行体素下采样（voxel_size={voxel_size}毫米）...")
-    pcd_down = pcd.voxel_down_sample(voxel_size=voxel_size)
-    print(f"下采样后点数：{len(pcd_down.points)}")
-
-    # 3. 宽松的统计滤波（仅过滤极端噪声）
-    print("\n执行统计滤波...")
-    cl, ind = pcd_down.remove_statistical_outlier(
-        nb_neighbors=50,  # 近邻数适配下采样后的点云
-        std_ratio=2.0  # 宽松阈值，避免过滤有效点
+    # 为每个点分配颜色
+    point_colors = []
+    for i in range(len(df)):
+        color = colors[i % len(colors)]
+        point_colors.append(color)
+    point_colors_array = np.array(point_colors)
+    edge_colors_array = point_colors_array * 0.6
+    edge_colors = edge_colors_array.tolist()
+    # 绘制散点图
+    scatter = ax.scatter(
+        x, y, z,
+        s=point_sizes,  # 点的大小
+        c=point_colors,  # 点的颜色
+        alpha=alpha,  # 透明度
+        edgecolors=edge_colors,  # 边缘颜色
+        linewidth=0.5  # 边缘线宽
     )
-    pcd_filtered = pcd_down.select_by_index(ind)
-    print(f"滤波后点数：{len(pcd_filtered.points)}")
 
-    # 4. 高效聚类：使用Open3D的DBSCAN（适配毫米单位）
-    # 关键：tolerance=2 → 2毫米（坐标单位是毫米，无需转米！）
-    eps = 2.0  # 聚类容忍度（毫米），可调整为1/3/5
-    min_points = 10  # 最小聚类点数（适配下采样后的点云）
-    print(f"\n执行DBSCAN聚类（eps={eps}毫米, min_points={min_points}）...")
-    labels = np.array(pcd_filtered.cluster_dbscan(
-        eps=eps,
-        min_points=min_points,
-        print_progress=True  # 显示进度条
-    ))
+    # 计算合适的坐标轴范围
+    min_x, max_x = x.min(), x.max()
+    min_y, max_y = y.min(), y.max()
+    min_z, max_z = z.min(), z.max()
 
-    # 调试聚类结果
-    unique_labels = np.unique(labels)
-    valid_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
-    print(f"\n聚类结果：")
-    print(f"所有标签：{unique_labels[:10]}...（共{len(unique_labels)}个）")
-    print(f"噪声点数量：{np.sum(labels == -1)}")
-    print(f"有效孔隙聚类数量：{valid_clusters}")
+    # 考虑点的大小，为坐标轴添加一些边距
+    x_range = max_x - min_x
+    y_range = max_y - min_y
+    z_range = max_z - min_z
 
-    if valid_clusters == 0:
-        print("\n⚠️ 未检测到有效聚类！尝试：")
-        print(f"1. 增大eps（当前={eps}）到3/5毫米")
-        print(f"2. 减小min_points（当前={min_points}）到5/3")
-        print(f"3. 减小voxel_size（当前={voxel_size}）到0.5")
-        return
+    margin = 0.1  # 10%的边距
 
-    # 5. 拟合椭球（仅处理前N个聚类，避免耗时过久）
-    max_label = labels.max()
-    print(f"\n检测到{max_label + 1}个孔隙，开始拟合椭球（仅处理前20个）...")
-    process_num = min(20, max_label + 1)  # 限制处理数量，可调整
+    ax.set_xlim(min_x - margin * x_range, max_x + margin * x_range)
+    ax.set_ylim(min_y - margin * y_range, max_y + margin * y_range)
+    ax.set_zlim(min_z - margin * z_range, max_z + margin * z_range)
 
-    for pore_id in range(process_num):
-        # 提取单个孔隙的点云
-        pore_indices = np.where(labels == pore_id)[0]
-        if len(pore_indices) == 0:
-            continue
-        pore_pcd = pcd_filtered.select_by_index(pore_indices)
-        pore_points = np.asarray(pore_pcd.points)
+    # 设置标签和标题
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    # ax.set_title(f'Fitted Spheres as Scatter Plot ({len(df)} points)\nPoint size represents sphere diameter')
 
-        print(f"\n================= 孔隙 {pore_id} =================")
-        print(f"孔隙点云数量：{len(pore_points)}")
+    ax.view_init(elev=25, azim=45)
 
-        # 拟合椭球
-        ellipsoid_params = fit_ellipsoid(pore_points)
-        if ellipsoid_params is None:
-            print(f"孔隙 {pore_id} 椭球拟合失败！")
-            continue
+    plt.tight_layout()
+    # plt.show()
+    fig.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close(fig)
 
-        # 输出椭球参数（单位：毫米）
-        print(f"椭球中心 (x,y,z)：{ellipsoid_params.center.round(2)} 毫米")
-        print(f"半轴长 (长,中,短)：{ellipsoid_params.semi_axes.round(2)} 毫米")
-        print(f"旋转矩阵：\n{ellipsoid_params.rotation.round(4)}")
-        print(f"椭球体积：{ellipsoid_params.volume:.2f} 立方毫米")
+def visualize_spheres_as_scatter_rmap(csv_file, filename="abstract_model.png", max_points=300, alpha=0.7):
+    """
+    将等效球体可视化为散点图
+    参数:
+        csv_file: CSV文件路径
+        max_points: 最大显示点数量
+        alpha: 透明度 (0-1)
+    """
+    # 读取CSV文件
+    df = pd.read_csv(csv_file)
 
+    # 限制显示数量
+    if len(df) > max_points:
+        df = df.sort_values('equivalent_radius', ascending=False).head(max_points)
 
+    # 创建图形
+    fig = plt.figure(figsize=(12, 9))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # 准备数据
+    x = df['centroid_x'].values
+    y = df['centroid_y'].values
+    z = df['centroid_z'].values
+    radii = df['equivalent_radius'].values
+
+    # 计算点大小
+    point_sizes = (radii ** 2) * np.pi * 0.1244
+
+    # 使用颜色映射替代固定颜色列表
+    # 基于半径大小分配颜色
+    norm_radii = (radii - radii.min()) / (radii.max() - radii.min())
+    cmap = plt.cm.viridis  # 使用viridis颜色映射
+    colors = cmap(norm_radii)
+
+    # 计算边缘颜色（填充颜色的0.6倍）
+    edge_colors = []
+    for color in colors:
+        # 只调整RGB分量，保持alpha不变
+        if len(color) == 4:  # RGBA
+            r, g, b, a = color
+            edge_color = (r * 0.6, g * 0.6, b * 0.6, a)
+        else:  # RGB
+            r, g, b = color[:3]
+            edge_color = (r * 0.6, g * 0.6, b * 0.6)
+        edge_colors.append(edge_color)
+
+    # 绘制散点图
+    scatter = ax.scatter(
+        x, y, z,
+        s=point_sizes,  # 点的大小
+        c=colors,  # 点的颜色（基于颜色映射）
+        alpha=alpha,  # 透明度
+        edgecolors=edge_colors,  # 边缘颜色
+        linewidth=0.5  # 边缘线宽
+    )
+
+    # 添加颜色条
+    sm = plt.cm.ScalarMappable(cmap=cmap,
+                               norm=plt.Normalize(vmin=radii.min(),
+                                                  vmax=radii.max()))
+    sm.set_array([])
+    cbar = plt.colorbar(sm, ax=ax, shrink=0.7, aspect=20)
+    cbar.set_label('Equivalent Radius')
+
+    # 计算合适的坐标轴范围
+    min_x, max_x = x.min(), x.max()
+    min_y, max_y = y.min(), y.max()
+    min_z, max_z = z.min(), z.max()
+
+    # 考虑点的大小，为坐标轴添加一些边距
+    x_range = max_x - min_x
+    y_range = max_y - min_y
+    z_range = max_z - min_z
+
+    margin = 0.1  # 10%的边距
+
+    ax.set_xlim(min_x - margin * x_range, max_x + margin * x_range)
+    ax.set_ylim(min_y - margin * y_range, max_y + margin * y_range)
+    ax.set_zlim(min_z - margin * z_range, max_z + margin * z_range)
+
+    # 设置标签和标题
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    # ax.set_title(
+    #     f'Fitted Spheres as Scatter Plot ({len(df)} points)\nPoint size represents sphere cross-sectional area')
+
+    ax.view_init(elev=25, azim=45)
+
+    plt.tight_layout()
+    # plt.show()
+    fig.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+# 使用示例
 if __name__ == "__main__":
-    # 替换为你的PCD文件路径
-    PCD_FILE_PATH = r"C:\Users\dell\PycharmProjects\Mask2AM\pcd\pore_filled\HL1.pcd"
-    main(PCD_FILE_PATH)
+    visualize_spheres_as_scatter(
+        "porosity_cluster_info.csv",
+        max_points=300000,
+        alpha=0.7
+    )
+    visualize_spheres_as_scatter_rmap(
+        "porosity_cluster_info.csv",
+        max_points=300000,
+        alpha=0.7
+    )

@@ -1,3 +1,5 @@
+import csv
+
 import open3d as o3d
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,7 +13,7 @@ def mesh_patches(patches):
         R = patch.R  # 旋转矩阵
         extent = patch.extent  # 长宽高
 
-        print(f"平面 {i}: 中心={center}, 法向量={R[:, 2]}, 尺寸={extent}")
+        # print(f"平面 {i}: 中心={center}, 法向量={R[:, 2]}, 尺寸={extent}")
 
         # 创建局部坐标系的基向量
         # R的列向量分别是局部坐标系的x、y、z轴
@@ -65,7 +67,7 @@ def mesh_patches_with_grid(patches, grid_size=50):
         R = patch.R  # 旋转矩阵
         extent = patch.extent  # 长宽高
 
-        print(f"平面 {i}: 中心={center}, 法向量={R[:, 2]}, 尺寸={extent}")
+        # print(f"平面 {i}: 中心={center}, 法向量={R[:, 2]}, 尺寸={extent}")
 
         # 创建局部坐标系的基向量
         # R的列向量分别是局部坐标系的x、y、z轴
@@ -275,7 +277,7 @@ def get_plane_summary(patches):
     print(f"最小尺寸: [{np.min(extents[:, 0]):.2f}, {np.min(extents[:, 1]):.2f}, {np.min(extents[:, 2]):.2f}]")
 
 
-def visualize_patches_simple(patches, alpha=0.5):
+def visualize_patches_save(patches, filename="abstract_model.png", alpha=0.5):
 
     fig = plt.figure(figsize=(12, 9))
     ax = fig.add_subplot(111, projection='3d')
@@ -326,7 +328,47 @@ def visualize_patches_simple(patches, alpha=0.5):
     ax.set_title(f'3D Planes ({len(patches)} planes)', fontsize=14)
     ax.view_init(elev=25, azim=45)
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    fig.savefig(filename, dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+
+def save_patches_to_csv(patches, filename="patches_info.csv"):
+    """
+    将平面片信息保存为CSV文件
+
+    参数:
+        patches: 平面片列表
+        filename: 保存的文件名，默认为"patches_info.csv"
+    """
+    with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+        # 定义CSV写入器
+        writer = csv.writer(csvfile)
+
+        # 写入英文表头，只包含需要的列
+        writer.writerow([
+            'Plane_ID',
+            'Center_X', 'Center_Y', 'Center_Z',
+            'Normal_X', 'Normal_Y', 'Normal_Z',
+            'Length', 'Width'  # 只需要长和宽
+        ])
+
+        # 遍历所有平面片并写入数据
+        for i, patch in enumerate(patches):
+            center = patch.center
+            R = patch.R
+            extent = patch.extent
+
+            # 准备行数据，只包含需要的字段
+            row_data = [
+                i,  # 平面ID
+                center[0], center[1], center[2],  # 中心点坐标
+                R[0, 2], R[1, 2], R[2, 2],  # 法向量（z轴方向）
+                extent[0], extent[1]  # 只需要长和宽
+            ]
+
+            # 写入数据行
+            writer.writerow(row_data)
 
 if __name__ == "__main__":
     print("->正在加载点云... ")
@@ -351,10 +393,10 @@ if __name__ == "__main__":
         min_num_points=200,  # 最小点数；若设为 0，则默认值为点云总点数的 0.1%
         search_param=o3d.geometry.KDTreeSearchParamKNN(30)  # 搜索参数
     )
-
+    save_patches_to_csv(patches, "patches_info.csv")
     print(f"检测到 {len(patches)} 个平面片")
     # mesh_patches_1 = mesh_patches(patches)
     mesh_patches_1 = mesh_patches_with_grid(patches)
     plane_visualizer_1(pcd_original, mesh_patches_1)
-    # visualize_patches_simple(patches, alpha=0.5)
+    # visualize_patches_save(patches, alpha=0.5)
     get_plane_summary(patches)

@@ -62,7 +62,7 @@ class PoreReconstruction3D:
             volume=volume,
             level=level / 255.0,
             spacing=self.voxel_size,
-            step_size=10,
+            step_size=5, #设置步长
             allow_degenerate=False,
             method='lewiner'
         )
@@ -266,56 +266,117 @@ class PoreReconstruction3D:
         print(f"\n网格已导出为: {filename}")
 
     def visualize_3d(self, save_path: str = None, show: bool = False):
-        """直接使用Marching Cubes结果的3D可视化"""
+        """Marching Cubes结果的3D可视化"""
         if self.mesh_vertices is None or self.mesh_faces is None:
             raise ValueError("\n请先进行三维重建")
 
-        print(f"\n网格面数: {len(self.mesh_faces)}")
+        fig = go.Figure()
 
-        # 创建Plotly图形
-        fig = go.Figure(data=[
-            go.Mesh3d(
-                x=self.mesh_vertices[:, 0],
-                y=self.mesh_vertices[:, 1],
-                z=self.mesh_vertices[:, 2],
-                i=self.mesh_faces[:, 0],
-                j=self.mesh_faces[:, 1],
-                k=self.mesh_faces[:, 2],
-                color='#87CEEB',
-                opacity=0.9,
-                flatshading=False,
-                lighting=dict(
-                    ambient=0.5,
-                    diffuse=0.8,
-                    specular=0.1,
-                    roughness=0.05
-                ),
-                hoverinfo='none',
-                showscale=False
-            )
-        ])
+        # 1. 先添加实体面
+        fig.add_trace(go.Mesh3d(
+            x=self.mesh_vertices[:, 0],
+            y=self.mesh_vertices[:, 1],
+            z=self.mesh_vertices[:, 2],
+            i=self.mesh_faces[:, 0],
+            j=self.mesh_faces[:, 1],
+            k=self.mesh_faces[:, 2],
+            color='#87CEEB',
+            opacity=1,
+            flatshading=True,
+            lighting=dict(
+                ambient=0.9,
+                diffuse=0.6,
+                specular=0.05,
+                roughness=0.9,
+                fresnel=0.1
+            ),
+            lightposition=dict(x=100, y=100, z=1000),
+            hoverinfo='none',
+            showscale=False,
+            name='孔隙实体'
+        ))
+
+        # 2. 添加线框
+        edges = set()
+        for face in self.mesh_faces:
+            edges.add(tuple(sorted([face[0], face[1]])))
+            edges.add(tuple(sorted([face[1], face[2]])))
+            edges.add(tuple(sorted([face[2], face[0]])))
+
+        # 创建线的坐标
+        line_x = []
+        line_y = []
+        line_z = []
+
+        for edge in edges:
+            v1, v2 = edge
+            # 第一条边
+            line_x.append(self.mesh_vertices[v1, 0])
+            line_y.append(self.mesh_vertices[v1, 1])
+            line_z.append(self.mesh_vertices[v1, 2])
+
+            # 第二条边
+            line_x.append(self.mesh_vertices[v2, 0])
+            line_y.append(self.mesh_vertices[v2, 1])
+            line_z.append(self.mesh_vertices[v2, 2])
+
+            # 添加None以断开线段
+            line_x.append(None)
+            line_y.append(None)
+            line_z.append(None)
+
+        # 添加线框轨迹
+        fig.add_trace(go.Scatter3d(
+            x=line_x,
+            y=line_y,
+            z=line_z,
+            mode='lines',
+            line=dict(
+                color='#333333',
+                width=2.0
+            ),
+            opacity=1,
+            hoverinfo='none',
+            name='孔隙边界'
+        ))
 
         # 设置布局
         fig.update_layout(
-            title='三维孔隙结构重建 (原始Marching Cubes结果)',
+            title='三维孔隙结构重建',
             scene=dict(
                 xaxis_title='X (μm)',
                 yaxis_title='Y (μm)',
                 zaxis_title='Z (μm)',
                 aspectmode='data',
                 camera=dict(
-                    eye=dict(x=1.0, y=1.0, z=0.6),
+                    eye=dict(x=1.5, y=1.5, z=1.0),  # 调整视角
                     center=dict(x=0, y=0, z=0),
                     up=dict(x=0, y=0, z=1)
                 ),
-                xaxis=dict(showbackground=True, backgroundcolor="#f8f9fa", gridcolor="#e9ecef"),
-                yaxis=dict(showbackground=True, backgroundcolor="#f8f9fa", gridcolor="#e9ecef"),
-                zaxis=dict(showbackground=True, backgroundcolor="#f8f9fa", gridcolor="#e9ecef"),
+                xaxis=dict(
+                    showbackground=True,
+                    backgroundcolor="#f8f9fa",
+                    gridcolor="#e9ecef",
+                    showticklabels=True
+                ),
+                yaxis=dict(
+                    showbackground=True,
+                    backgroundcolor="#f8f9fa",
+                    gridcolor="#e9ecef",
+                    showticklabels=True
+                ),
+                zaxis=dict(
+                    showbackground=True,
+                    backgroundcolor="#f8f9fa",
+                    gridcolor="#e9ecef",
+                    showticklabels=True
+                ),
             ),
-            width=1400,
-            height=1200,
+            width=1200,  # 调整尺寸
+            height=1000,
             paper_bgcolor='white',
-            margin=dict(l=0, r=0, t=40, b=0)
+            margin=dict(l=0, r=0, t=60, b=0),
+            showlegend=False  # 显示图例
         )
 
         if save_path:
@@ -324,7 +385,7 @@ class PoreReconstruction3D:
                 save_path,
                 include_plotlyjs='cdn',
                 full_html=False,
-                config=dict(responsive=True, displayModeBar=False)
+                config=dict(responsive=True, displayModeBar=True)  # 显示工具栏
             )
             print(f"\n三维可视化已保存至: {save_path}")
 
